@@ -60,6 +60,16 @@ class MockRegistry implements RegistryBackend {
 			}
 
 		],
+
+		'scoped': [
+			{
+				"name": "@scope/pkg",
+				"version": "2.0.0",
+				"dist": {
+					"tarball": "-/scope-pkg-2.0.0.tgz"
+				},
+			},
+		],
 	};
 
 	extractPkgJson(module_tarball: string): Promise<PkgJson[]> {
@@ -201,4 +211,18 @@ it("should update URLs served when the listening URL is updated in the service",
 		assert_pkg_version = registry.fetchPkgVersion('assert', '1.4.1');
 		expect(assert_pkg_version['dist']['tarball']).toBe("http://127.0.0.1:1235/-/assert-1.4.1.tgz");
 	});
+});
+
+it("should find archive files by package name and version", function() {
+	return registry.register("tests/pkgs")
+		.then(() => registry.register("scoped"))
+		.then(() => {
+			expect(registry.packageArchiveFile('assert', '1.0.1')).toBe("assert-1.0.1.tgz");
+			expect(registry.packageArchiveFile('assert', '1.4.1')).toBe("assert-1.4.1.tgz");
+			expect(registry.packageArchiveFile('@scope/pkg', '2.0.0')).toBe("scope-pkg-2.0.0.tgz");
+
+			expect(registry.packageArchiveFile('assert', '9.9.9')).toBeNull();
+			expect(registry.packageArchiveFile('not-exist-package', '1.0.1')).toBeNull();
+			expect(registry.packageArchiveFile('pkg', '2.0.0')).toBeNull();
+		});
 });

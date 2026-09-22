@@ -20,6 +20,8 @@
 import { Service } from '../src/service'
 import { Registry, RegistryBackend, RequestHandler, PkgJson } from '../src/registry'
 import * as http from 'http'
+import * as fs from 'fs'
+import * as path from 'path'
 import { ListenOptions } from 'net';
 import { URL } from 'url';
 
@@ -258,4 +260,98 @@ describe("server request processing", function() {
 		});
 	});
 
+});
+
+
+describe("server archive requests", function() {
+	const pkgs_dir = path.resolve(__dirname, 'pkgs');
+	let service: TestService;
+
+	class ArchiveRegistryBackend implements RegistryBackend
+	{
+		public extractPkgJson(p: string): Promise<PkgJson[]> {
+			return Promise.resolve(<PkgJson[]>[
+				{
+					dist: { tarball: "-/" + path.join(pkgs_dir, "assert-1.4.1.tgz") },
+					name: "assert",
+					version: "1.4.1"
+				},
+				{
+					dist: { tarball: "-/" + path.join(pkgs_dir, "empty-npm-package-1.0.0.tgz") },
+					name: "@scope/empty",
+					version: "1.0.0"
+				}
+			])
+		}
+	}
+
+	let requestArchive = function(url_path: string): Promise<Buffer> {
+		const registry = new Registry;
+		registry.addBackend(new ArchiveRegistryBackend);
+		registry.serviceProvider = service;
+		registry.register('/');
+
+		return new Promise((resolve, reject) => {
+			service.run(registry).on("listening", () => {
+				const req = http.request({
+					hostname: '127.0.0.1',
+					port: Number(service.url.port),
+					protocol: 'http:',
+					path: url_path,
+					agent: false
+				}, res => {
+					if (res.statusCode !== 200) {
+						res.resume();
+						service.stop();
+						reject(res.statusCode + (res.statusMessage ? res.statusMessage : ""));
+						return;
+					}
+
+					expect(res.headers['content-type']).toBe('application/x-compressed-tar');
+					const chunks: Buffer[] = [];
+					res.on("data", chunk => chunks.push(chunk));
+					res.on("end", () => {
+						service.stop().then(() => resolve(Buffer.concat(chunks)));
+					});
+					res.on("error", () => reject("Data transfer error. Should not happen"));
+				});
+				req.end();
+			});
+		});
+	}
+
+	beforeEach(function() {
+		service = new TestService({url: new URL("http://127.0.0.1")});
+	});
+
+	it("serves archive by tarball file name", function() {
+		return requestArchive('/-/assert-1.4.1.tgz').then(data => {
+			expect(data).toStrictEqual(fs.readFileSync(path.join(pkgs_dir, "assert-1.4.1.tgz")));
+		});
+	});
+
+	it("serves archive by package name and version", function() {
+		return requestArchive('/assert/-/assert-1.4.1.tgz').then(data => {
+			expect(data).toStrictEqual(fs.readFileSync(path.join(pkgs_dir, "assert-1.4.1.tgz")));
+		});
+	});
+
+	it("serves archive of a scoped package by package name and version", function() {
+		const expected = fs.readFileSync(path.join(pkgs_dir, "empty-npm-package-1.0.0.tgz"));
+		return requestArchive('/@scope/empty/-/empty-1.0.0.tgz')
+			.then(data => expect(data).toStrictEqual(expected))
+			.then(() => {
+				service = new TestService({url: new URL("http://127.0.0.1")});
+				return requestArchive('/@scope%2fempty/-/empty-1.0.0.tgz');
+			})
+			.then(data => expect(data).toStrictEqual(expected));
+	});
+
+	it("responds with error when archive name does not match package", function() {
+		return expect(requestArchive('/assert/-/other-1.4.1.tgz')).rejects.toBe(400 + "Invalid path");
+	});
+
+	it("responds with not found for unknown package version archive", function() {
+		return expect(requestArchive('/assert/-/assert-9.9.9.tgz')).rejects.toBe(404 + "Not Found");
+	});
 });
