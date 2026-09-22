@@ -14,10 +14,10 @@
     "typescript": "^5.1.2"
   },
   "scripts": {
-    "build": "tsc --build",
-    "test": "jest -c jest.config.js --coverage && jest -c jest-integration.config.js --coverage",
-    "test-watch": "jest --watch",
-    "test-integration": "jest -c jest-integration.config.js --watch"
+    "build": "node node_modules/typescript/bin/tsc --build",
+    "test": "node node_modules/jest/bin/jest.js -c jest.config.js --coverage && node node_modules/jest/bin/jest.js -c jest-integration.config.js --coverage",
+    "test-watch": "node node_modules/jest/bin/jest.js --watch",
+    "test-integration": "node node_modules/jest/bin/jest.js -c jest-integration.config.js --watch"
   },
   "author": "SUSE LLC",
   "license": "GPL-3.0-or-later",
