@@ -25,7 +25,7 @@ import * as fs from 'fs'
 import { ListenOptions, AddressInfo } from 'net'
 
 interface UrlRequest {
-	type: ('root'|'pkg-versions'|'package'|'archive'),
+	type: ('root'|'pkg-versions'|'package'|'archive'|'package-archive'),
 	package?: string,
 	version?: string
 }
@@ -45,6 +45,18 @@ export class Service {
 		if (split.length >= 2 && split[0].startsWith("@")) {
 			const scope = split.shift();
 			split[0] = scope + '/' + split[0];
+		}
+
+		if (split.length === 3 && split[1] === '-') {
+			// <package>/-/<name>-<version>.tgz as requested by yarn berry
+			const name = split[0].split('/').pop() as string;
+			if (split[2].startsWith(name + '-') && split[2].endsWith('.tgz')) {
+				return {
+					type: 'package-archive',
+					package: split[0],
+					version: split[2].slice(name.length + 1, -4),
+				}
+			}
 		}
 
 		if (split[0] === '-') {
@@ -115,8 +127,11 @@ export class Service {
 						res.end(data);
 						break;
 					}
+					case 'package-archive':
 					case 'archive': {
-						const archive_path = registry.archiveFile(<string>req_type.package)
+						const archive_path = req_type.type === 'archive' ?
+							registry.archiveFile(<string>req_type.package) :
+							registry.packageArchiveFile(<string>req_type.package, <string>req_type.version)
 						if (archive_path) {
 							res.writeHead(200, {
 								'Content-Type': 'application/x-compressed-tar'

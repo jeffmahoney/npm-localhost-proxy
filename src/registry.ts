@@ -153,6 +153,13 @@ export class Registry {
 		return backend_processors;
 	}
 
+	public packageArchiveFile(name: string, version: string): (string|null) {
+		const files = this.pkgs.filter(json => json.name === name && json.version === version)
+		if (files.length !== 1)
+			return null;
+		return files[0].dist.tarball.substring(2);
+	}
+
 	public archiveFile(file: string): (string|null) {
 		const files = this.pkgs.filter(json => (baseTarballName(json.dist.tarball) === file))
 		if (files.length !== 1)
